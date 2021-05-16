@@ -285,8 +285,8 @@ def compute_wer(speaker: str):
 
 # compute overall WER (ie. over the cross-validation)
 
-def compute_overall_wer():
-    digits_true, features_true = get_random_sequence("theo")
+def compute_overall_wer(speaker : str = "theo"):
+    digits_true, features_true = get_random_sequence(speaker)
 
 
     errors = []
