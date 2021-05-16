@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 
 # %%
+from operator import mod
 from typing import List, Tuple
 
 import librosa
 import numpy as np
 from hmmlearn import hmm
+from numpy.core.fromnumeric import shape
+from numpy.core.shape_base import block
 from scipy.sparse.construct import random
 from sklearn.metrics import confusion_matrix
 
@@ -89,11 +92,15 @@ def train_models(train_keys : List[str]):
     
     return models
 
+
+model_map = {}
+
 def get_scores(speaker_pos : int):
         test_key = speakers[speaker_pos]
         train_keys = [x for x in speakers if test_key != x]
     
         models = train_models(train_keys)
+        model_map[speakers[speaker_pos]] = models
         scores = evaluate(test_key, models)   
         return scores  
         
@@ -185,9 +192,11 @@ for idx, cm in enumerate(matrices):
 # ---%<------------------------------------------------------------------------
 # Part 2: Decoding
 
+# %% 
 def get_random_sequence(speaker: str) -> Tuple[List[int], List]:
     """
-    Gets a random sequence of digits with a length between 3 and 6.
+    Gets a random sequence of digits with a length between 3 and 6 of 
+    the provided speaker.
 
     @return: the sequence of digits and corresponding mfcc-features 
     """
@@ -208,8 +217,58 @@ def get_random_sequence(speaker: str) -> Tuple[List[int], List]:
 # sure to change the transition probabilities to allow transitions from one
 # digit to any other
 
+def get_meta_hmm(speaker: str):
+    """
+    Gets a meta hmm which is trained on all speakers except the provided one
+    """
+    n_components = 5
+    n_digits = 10
+    transmat = np.zeros(shape=(n_digits*n_components,n_digits*n_components))
+    means = []
+    covars = []
+    models = model_map["theo"]
+
+    for idx in range(0,n_digits):
+        
+        tm = models[idx].transmat_
+        means.append(models[idx].means_)
+        covars.append(models[idx].covars_)
+
+        start = idx*n_components
+        end = start + n_components
+        transmat[start:end,start:end] = tm
+
+    for idx in range(0, nr):
+        if (idx +1) % 5 == 0:
+            transmat[idx] = np.concatenate([np.array([0.1, 0, 0 ,0, 0])] * 10)
+
+
+    meta_model = hmm.GaussianHMM(n_components=nr, covariance_type="full")
+    meta_model.startprob_ = np.concatenate([np.array([0.1, 0, 0 ,0, 0])] * 10) 
+    meta_model.transmat_ = transmat
+    meta_model.means_ = np.concatenate(means)
+    meta_model.covars_ = np.concatenate(covars)
+    return meta_model
+
 # use the `decode` function to get the most likely state sequence for the test
 # sequences; re-map that to a sequence of digits
+
+def decode_meta(mffc_features, speaker: str):
+    meta_hmm = get_meta_hmm(speaker)
+
+    prob, sequence = meta_hmm.decode(mffc_features)
+
+    states = []
+
+    blocked = False
+    for state in sequence:
+        if state % 5 == 0 and not blocked:
+            states.append(state // 5)
+            blocked = True
+                    
+        if state % 5 != 0:
+            blocked = False
+    return states
 
 # use jiwer.wer to compute the word error rate between reference and decoded
 # digit sequence
