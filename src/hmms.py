@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
 # %%
-from typing import List
+from typing import List, Tuple
 
 import librosa
 import numpy as np
 from hmmlearn import hmm
+from scipy.sparse.construct import random
+from sklearn.metrics import confusion_matrix
 
 import os
 
@@ -31,6 +33,8 @@ def load_fts(digit: int, spk: str, n: int):
     y, sr = librosa.load(path_to_required_sample)
     return librosa.feature.mfcc(y, sr, None, n_mfcc=13).T
     pass
+
+# %% Read mfccs
 
 mfccs = {}
 for speaker in speakers:
@@ -74,35 +78,89 @@ def getModel():
 
     return model
 
-def train():
-    scores = {}
-    for i in range(0, len(speakers)):
-        test_key = speakers[i]
+def train_models(train_keys : List[str]):
+    models = {}
+    for digit in digits:
+        model = getModel()
+        X, length = getXforDigit(digit, train_keys)
+
+        model.fit(X, length)
+        models[digit] = model  
+    
+    return models
+
+def get_scores(speaker_pos : int):
+        test_key = speakers[speaker_pos]
         train_keys = [x for x in speakers if test_key != x]
+    
+        models = train_models(train_keys)
+        scores = evaluate(test_key, models)   
+        return scores  
+        
+  
+def evaluate(test_key : str, models : dict):
+    scores = {}
+    for i in digits:
+        X_test, length_test = getXforDigit(i, [test_key])
 
-        models = {}
+        startpos = 0
+        
+        predictions_group = []
+        for length in length_test:
+            sample = X_test[startpos:startpos+length]
+            startpos += length
 
-        for digit in digits:
-            model = getModel()
+            prediction_results = []
+            for digit in digits:
+                prediction_results.append(models[digit].score(sample))
+            predictions_group.append(prediction_results)
+        scores[i] = predictions_group
+    return scores    
+#%% Get Scores
 
-            X, length = getXforDigit(digit, train_keys)
+results = {}
+for pos, speaker in enumerate(speakers):
+    results[speaker] = get_scores(pos)
 
-            model.fit(X, length)
-            models[digit] = model
+#%%
+
+matrices = []
+for speaker in speakers:
+    y_true = []
+    y_pred = []
+    for digit in digits: 
+        samples = results[speaker][digit]
+        for sample in samples:
+            y_true.append(digit)
+            y_pred.append(np.argmax(sample))
+            
+
+    matrices.append(confusion_matrix(y_true, y_pred))
 
 
+#%% Plot
 
-        X_test, length_test = getXforDigit(0, [test_key])
+import matplotlib.pyplot as plt
 
-        prediction_results = {}
-        for digit in digits:
-            prediction_results[digit] = models[digit].score_samples(X_test, length_test)
-        scores[speakers[i]] = prediction_results
-        break
-    return scores
+for idx, cm in enumerate(matrices): 
 
+    plt.clf()
+    plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Wistia)
+    classNames = digits
+    plt.title(speakers[idx])
+    plt.ylabel('True label')
+    plt.xlabel('Predicted label')
+    tick_marks = np.arange(len(classNames))
+    plt.xticks(tick_marks, classNames, rotation=45)
+    plt.yticks(tick_marks, classNames)
+    for i in digits:
+        for j in digits:
+            plt.text(j,i, str(cm[i][j]))
+    
+    plt.savefig(f"../img/{speakers[idx]}_cm.png")
+    plt.show()
 
-scores = train()
+   
 
 
 
@@ -127,6 +185,22 @@ scores = train()
 # ---%<------------------------------------------------------------------------
 # Part 2: Decoding
 
+def get_random_sequence(speaker: str) -> Tuple[List[int], List]:
+    """
+    Gets a random sequence of digits with a length between 3 and 6.
+
+    @return: the sequence of digits and corresponding mfcc-features 
+    """
+    sequence = []
+    for _ in range(0, np.random.randint(3,7)):
+        sequence.append(np.random.randint(0,10))
+    
+    mfcc_sequence = []
+    for digit in sequence:
+        mfcc_sequence.append(load_fts(digit, speaker, np.random.randint(0, nr)))
+
+    return sequence, np.concatenate(mfcc_sequence, axis=0)
+
 # generate test sequences; retain both digits (for later evaluation) and
 # features (for actual decoding)
 
@@ -144,3 +218,5 @@ scores = train()
 
 # ---%<------------------------------------------------------------------------
 # Optional: Decoding
+
+# %%
