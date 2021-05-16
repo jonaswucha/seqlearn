@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
 # %%
-from typing import List
+from typing import List, Tuple
 
 import librosa
 import numpy as np
 from hmmlearn import hmm
+from scipy.sparse.construct import random
 from sklearn.metrics import confusion_matrix
 
 import os
@@ -32,6 +33,8 @@ def load_fts(digit: int, spk: str, n: int):
     y, sr = librosa.load(path_to_required_sample)
     return librosa.feature.mfcc(y, sr, None, n_mfcc=13).T
     pass
+
+# %% Read mfccs
 
 mfccs = {}
 for speaker in speakers:
@@ -182,6 +185,22 @@ for idx, cm in enumerate(matrices):
 # ---%<------------------------------------------------------------------------
 # Part 2: Decoding
 
+def get_random_sequence(speaker: str) -> Tuple[List[int], List]:
+    """
+    Gets a random sequence of digits with a length between 3 and 6.
+
+    @return: the sequence of digits and corresponding mfcc-features 
+    """
+    sequence = []
+    for _ in range(0, np.random.randint(3,7)):
+        sequence.append(np.random.randint(0,10))
+    
+    mfcc_sequence = []
+    for digit in sequence:
+        mfcc_sequence.append(load_fts(digit, speaker, np.random.randint(0, nr)))
+
+    return sequence, np.concatenate(mfcc_sequence, axis=0)
+
 # generate test sequences; retain both digits (for later evaluation) and
 # features (for actual decoding)
 
@@ -199,3 +218,5 @@ for idx, cm in enumerate(matrices):
 
 # ---%<------------------------------------------------------------------------
 # Optional: Decoding
+
+# %%
