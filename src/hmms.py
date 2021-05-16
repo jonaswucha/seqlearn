@@ -11,6 +11,7 @@ from numpy.core.fromnumeric import shape
 from numpy.core.shape_base import block
 from scipy.sparse.construct import random
 from sklearn.metrics import confusion_matrix
+from jiwer import wer
 
 import os
 
@@ -226,7 +227,7 @@ def get_meta_hmm(speaker: str):
     transmat = np.zeros(shape=(n_digits*n_components,n_digits*n_components))
     means = []
     covars = []
-    models = model_map["theo"]
+    models = model_map[speaker]
 
     for idx in range(0,n_digits):
         
@@ -265,15 +266,43 @@ def decode_meta(mffc_features, speaker: str):
         if state % 5 == 0 and not blocked:
             states.append(state // 5)
             blocked = True
-                    
+
         if state % 5 != 0:
             blocked = False
     return states
 
+def list_to_str(digits: list):
+    digit_str = [str(int) for int in digits]
+    return " ".join(digit_str)
+
 # use jiwer.wer to compute the word error rate between reference and decoded
 # digit sequence
 
+def compute_wer(speaker: str):
+    digits_true, features_true = get_random_sequence(speaker)
+    digits_pred = decode_meta(features_true, speaker)
+    return wer(list_to_str(digits_true), list_to_str(digits_pred))
+
 # compute overall WER (ie. over the cross-validation)
+
+def compute_overall_wer():
+    digits_true, features_true = get_random_sequence("theo")
+
+
+    errors = []
+    pred = []
+    for speaker in speakers:
+        digits_pred = decode_meta(features_true, speaker)
+        pred.append(digits_pred)
+        errors.append(wer(list_to_str(digits_true), list_to_str(digits_pred)))
+
+    idx = np.argmin(errors)
+    
+    print(f"digits: {digits_true}")
+    for i in range(0, len(speakers)):
+        print(f" - {speakers[i]} predicted {pred[i]} with WER of {errors[i]}")
+
+    return errors[idx], speakers[idx]
 
 # ---%<------------------------------------------------------------------------
 # Optional: Decoding
